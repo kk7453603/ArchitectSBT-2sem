@@ -1,8 +1,9 @@
+package com.example.currencyprovider.service;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.security.SecureRandom;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -58,8 +59,12 @@ public class CurrencyRateService {
         long timestamp = System.currentTimeMillis();
         
         // Логируем информацию о сгенерированном курсе
-        logger.info("Сгенерирован курс USDRUB: {:.2f} (базовый: {:.2f}, отклонение: {:.2f})",
-                finalRate, baseRate, deviation);
+        logger.info(
+                "Сгенерирован курс USDRUB: {} (базовый: {}, отклонение: {})",
+                String.format("%.2f", finalRate),
+                String.format("%.2f", baseRate),
+                String.format("%.2f", deviation)
+        );
         
         return new RateData(finalRate, timestamp);
     }
