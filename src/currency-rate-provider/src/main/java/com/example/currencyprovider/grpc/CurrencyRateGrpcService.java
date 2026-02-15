@@ -1,3 +1,5 @@
+package com.example.currencyprovider.grpc;
+
 import com.example.currencyprovider.service.CurrencyRateService;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
@@ -64,8 +66,11 @@ public class CurrencyRateGrpcService extends CurrencyRateServiceGrpc.CurrencyRat
             responseObserver.onCompleted();
             
             // Логируем успешную отправку ответа
-            logger.info("Отправлен ответ: курс={:.2f}, timestamp={}",
-                    rateData.getRate(), rateData.getTimestamp());
+            logger.info(
+                    "Отправлен ответ: курс={}, timestamp={}",
+                    String.format("%.2f", rateData.getRate()),
+                    rateData.getTimestamp()
+            );
             
         } catch (Exception e) {
             // Логируем ошибку

@@ -1,175 +1,146 @@
-# Currency Rate Services
+# Currency Rate Services (ZooKeeper Discovery + Round Robin)
 
-Два Spring Boot микросервиса с gRPC коммуникацией для получения и отображения курса валют.
+Проект содержит два Spring Boot микросервиса с gRPC взаимодействием:
 
-## Описание проекта
+- `currency-rate-provider` — gRPC сервер, который отдает курс USD/RUB.
+- `rate-printer` — gRPC клиент, который находит provider через ZooKeeper и делает запросы с базовым round-robin выбором инстанса.
 
-Проект демонстрирует архитектуру взаимодействия микросервисов через протокол gRPC:
-- **Currency Rate Provider** — gRPC сервер, который генерирует и предоставляет курс валют (USD/RUB)
-- **Rate Printer** — gRPC клиент, который подключается к серверу и выводит полученный курс в консоль с периодичностью 5 секунд
+## Что реализовано
 
-## Технологии
+- Автоматическая регистрация `currency-rate-provider` в ZooKeeper.
+- Автоматическое обнаружение инстансов `currency-rate-provider` в `rate-printer`.
+- Балансировка вызовов в `rate-printer` через round-robin селектор.
+- Unit-тесты для business-логики, gRPC слоя, discovery и round-robin.
+- JaCoCo check с порогом покрытия `>= 80%` по строкам в каждом модуле.
 
-- **Spring Boot 3.x** — основной фреймворк для обоих сервисов
-- **Java 17** — язык программирования
-- **gRPC** — высокопроизводительный RPC-фреймворк для межсервисного взаимодействия
-- **Maven** — система сборки проекта
-- **Protocol Buffers** — формат сериализации данных для gRPC
+## Стек
 
-## Архитектура
+- Java 17
+- Spring Boot 3.2.0
+- Spring Cloud 2023.0.0 (ZooKeeper Discovery)
+- gRPC + Protobuf
+- Maven
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Architecture                             │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│   ┌──────────────────────┐         ┌──────────────────────┐    │
-│   │ Currency Rate        │         │ Rate Printer         │    │
-│   │ Provider (Сервер)    │         │ (Клиент)              │    │
-│   │                      │         │                       │    │
-│   │ HTTP: 8081           │         │ HTTP: 8082            │    │
-│   │ gRPC: 9090           │◄────────│ gRPC Client           │    │
-│   │                      │   9090  │                       │    │
-│   └──────────────────────┘         └──────────────────────┘    │
-│           │                                  │                  │
-│           │ gRPC                             │ Console Output   │
-│           ▼                                  ▼                  │
-│   ┌─────────────────────────────────────────────────────┐       │
-│   │            Консоль (логи сервера)                   │       │
-│   └─────────────────────────────────────────────────────┘       │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+## Структура
 
-## Структура проекта
-
-```
-Sem2-SBT/
-├── README.md                           # Документация проекта
-├── currency-rate-provider/             # gRPC сервер
-│   ├── pom.xml                         # Maven конфигурация
+```text
+src/
+├── currency-rate-provider/
+│   ├── pom.xml
 │   └── src/main/
 │       ├── java/com/example/currencyprovider/
-│       │   ├── CurrencyRateProviderApplication.java  # Главный класс
-│       │   ├── config/
-│       │   │   └── GrpcServerConfig.java              # Конфигурация gRPC сервера
-│       │   ├── grpc/
-│       │   │   └── CurrencyRateGrpcService.java      # gRPC сервис
-│       │   └── service/
-│       │       └── CurrencyRateService.java          # Бизнес-логика
-│       ├── proto/
-│       │   └── currency_rate.proto                    # Protobuf определения
-│       └── resources/
-│           └── application.properties                 # Настройки приложения
-│
-└── rate-printer/                       # gRPC клиент
-    ├── pom.xml                         # Maven конфигурация
-    └── src/main/
-        ├── java/com/example/rateprinter/
-        │   ├── RatePrinterApplication.java            # Главный класс
-        │   └── service/
-        │       └── RatePrinterService.java            # gRPC клиент + вывод
-        ├── proto/
-        │   └── currency_rate.proto                    # Protobuf определения
-        └── resources/
-            └── application.properties                 # Настройки приложения
+│       ├── proto/currency_rate.proto
+│       └── resources/application.properties
+├── rate-printer/
+│   ├── pom.xml
+│   └── src/main/
+│       ├── java/com/example/rateprinter/
+│       ├── proto/currency_rate.proto
+│       └── resources/application.properties
+├── docker-compose.zookeeper.yml
+└── README.md
 ```
-
-## Требования
-
-- **Java 17** или выше
-- **Maven 3.6** или выше
-- Доступ к портам 8081, 8082 и 9090 на localhost
 
 ## Конфигурация
 
-### Currency Rate Provider
+### currency-rate-provider
 
-| Параметр | Значение | Описание |
-|----------|----------|----------|
-| `server.port` | 8081 | HTTP порт Spring Boot |
-| `grpc.server.port` | 9090 | Порт gRPC сервера |
+- `spring.application.name=currency-rate-provider`
+- `spring.cloud.zookeeper.connect-string=localhost:2181`
+- `spring.cloud.zookeeper.discovery.register=true`
+- `spring.cloud.zookeeper.discovery.instance-port=${grpc.server.port}`
+- `grpc.server.port=9090`
 
-### Rate Printer
+### rate-printer
 
-| Параметр | Значение | Описание |
-|----------|----------|----------|
-| `server.port` | 8082 | HTTP порт Spring Boot |
-| `grpc.client.currency-provider.host` | localhost | Адрес gRPC сервера |
-| `grpc.client.currency-provider.port` | 9090 | Порт gRPC сервера |
-| `rate.printer.interval-ms` | 5000 | Интервал запросов (мс) |
+- `spring.application.name=rate-printer`
+- `spring.cloud.zookeeper.connect-string=localhost:2181`
+- `rate.provider.service-name=currency-rate-provider`
+- `rate.printer.interval-ms=5000`
+- `rate.provider.rpc-timeout-ms=1500`
 
-## Сборка
-
-### Currency Rate Provider
+## Запуск ZooKeeper
 
 ```bash
-cd currency-rate-provider
-mvn clean compile
+cd src
+docker compose -f docker-compose.zookeeper.yml up -d
 ```
 
-### Rate Printer
+Проверка контейнера:
 
 ```bash
-cd rate-printer
-mvn clean compile
+docker ps | grep sbt-zookeeper
 ```
 
-## Запуск
+## Сборка и тесты
 
-**Важно:** Сервер должен быть запущен **перед** клиентом.
+Если локальный `mvn` отсутствует, используйте Maven через Docker.
 
-1. Запустите Currency Rate Provider:
+### currency-rate-provider
+
 ```bash
-cd currency-rate-provider
+docker run --rm -v "$PWD/src/currency-rate-provider":/workspace -w /workspace \
+  maven:3.9.9-eclipse-temurin-17 mvn clean verify
+```
+
+### rate-printer
+
+```bash
+docker run --rm -v "$PWD/src/rate-printer":/workspace -w /workspace \
+  maven:3.9.9-eclipse-temurin-17 mvn clean verify
+```
+
+## Запуск сервисов
+
+### Вариант с локальным Maven
+
+1. Запустите provider:
+
+```bash
+cd src/currency-rate-provider
 mvn spring-boot:run
 ```
 
-2. В отдельном терминале запустите Rate Printer:
+2. В отдельном терминале запустите rate-printer:
+
 ```bash
-cd rate-printer
+cd src/rate-printer
 mvn spring-boot:run
 ```
 
-## Проверка работоспособности
+### Вариант через Maven Docker
 
-После успешного запуска обоих сервисов:
+1. Provider:
 
-### В консоли Currency Rate Provider вы увидите:
-```
-2024-01-15T10:30:00.123Z  INFO 12345 --- [           main] c.e.c.CurrencyRateProviderApplication   : Started CurrencyRateProviderApplication in 2.345s
-2024-01-15T10:30:00.456Z  INFO 12345 --- [grpc-server] o.grpc.server                         : Server started on port 9090
-```
-
-### В консоли Rate Printer вы увидите:
-```
-2024-01-15T10:30:01.789Z  INFO 12345 --- [           main] c.e.r.RatePrinterApplication         : Started RatePrinterApplication in 1.234s
-2024-01-15T10:30:01.890Z  INFO 12345 --- [   scheduler-1] c.e.r.service.RatePrinterService     : Connected to gRPC server at localhost:9090
+```bash
+docker run --rm --network host -v "$PWD/src/currency-rate-provider":/workspace -w /workspace \
+  maven:3.9.9-eclipse-temurin-17 mvn spring-boot:run
 ```
 
-## Логирование
+2. Rate-printer:
 
-### Пример вывода Rate Printer
-
-Каждые 5 секунд в консоли клиента будет появляться строка с текущим курсом:
-
-```
-[RatePrinter] USD/RUB: 92.50 (timestamp: 2024-01-15 10:30:00)
-[RatePrinter] USD/RUB: 92.55 (timestamp: 2024-01-15 10:30:05)
-[RatePrinter] USD/RUB: 92.48 (timestamp: 2024-01-15 10:30:10)
-[RatePrinter] USD/RUB: 92.60 (timestamp: 2024-01-15 10:30:15)
+```bash
+docker run --rm --network host -v "$PWD/src/rate-printer":/workspace -w /workspace \
+  maven:3.9.9-eclipse-temurin-17 mvn spring-boot:run
 ```
 
-Формат вывода:
-- `[RatePrinter]` — префикс источника
-- `USD/RUB` — валютная пара
-- `92.50` — текущий курс
-- `timestamp` — время получения курса
+## Smoke-проверка
 
-## Остановка сервисов
+1. Поднять ZooKeeper.
+2. Запустить `currency-rate-provider`.
+3. Запустить `rate-printer`.
+4. Проверить логи `rate-printer`: должны регулярно появляться строки с текущим курсом и адресом provider.
 
-Для остановки сервисов нажмите `Ctrl+C` в терминале, где они запущены.
+Пример:
 
-Рекомендуемый порядок остановки:
-1. Сначала остановите Rate Printer (клиент)
-2. Затем остановите Currency Rate Provider (сервер)
+```text
+[RatePrinter] USD/RUB: 92.73 (timestamp: 2026-02-15 19:20:10, provider: 127.0.0.1:9090)
+```
+
+## Остановка
+
+```bash
+# остановка сервисов Ctrl+C
+cd src
+docker compose -f docker-compose.zookeeper.yml down
+```
