@@ -1,0 +1,10 @@
+services:
+  zookeeper:
+    image: zookeeper:3.9
+    container_name: sbt-zookeeper
+    restart: unless-stopped
+    ports:
+      - "2181:2181"
+      - "7000:7000"
+    environment:
+      ZOO_CFG_EXTRA: "metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider metricsProvider.httpPort=7000"
