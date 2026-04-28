@@ -12,6 +12,7 @@
 - Балансировка вызовов в `rate-printer` через round-robin селектор.
 - Unit-тесты для business-логики, gRPC слоя, discovery и round-robin.
 - JaCoCo check с порогом покрытия `>= 80%` по строкам в каждом модуле.
+- **12-Factor App**: разделение сборки/релиза/выполнения (Docker), graceful shutdown, dev/prod профили, stdout логирование, shared proto модуль.
 
 ## Стек
 
@@ -20,108 +21,131 @@
 - Spring Cloud 2023.0.0 (ZooKeeper Discovery)
 - gRPC + Protobuf
 - Maven
+- Docker
 
 ## Структура
 
 ```text
 src/
+├── currency-rate-proto/          # Общие protobuf-определения
+│   ├── pom.xml
+│   └── src/main/proto/currency_rate.proto
 ├── currency-rate-provider/
+│   ├── Dockerfile
 │   ├── pom.xml
 │   └── src/main/
 │       ├── java/com/example/currencyprovider/
-│       ├── proto/currency_rate.proto
-│       └── resources/application.properties
+│       └── resources/
+│           ├── application.properties
+│           ├── application-dev.properties
+│           └── application-prod.properties
 ├── rate-printer/
+│   ├── Dockerfile
 │   ├── pom.xml
 │   └── src/main/
 │       ├── java/com/example/rateprinter/
-│       ├── proto/currency_rate.proto
-│       └── resources/application.properties
+│       └── resources/
+│           ├── application.properties
+│           ├── application-dev.properties
+│           └── application-prod.properties
+├── docker-compose.yml             # Полный стек (ZooKeeper + сервисы + мониторинг)
 ├── docker-compose.zookeeper.yml
+├── docker-compose.monitoring.yml
+├── docker-compose.pact-broker.yml
+├── pom.xml                        # Корневой агрегирующий POM
 └── README.md
 ```
 
-## Конфигурация
+## Профили Spring Boot
 
-### currency-rate-provider
+- **dev** (по умолчанию при локальном запуске) — ZooKeeper на `localhost:2181`, debug-логи.
+- **prod** (по умолчанию в Docker) — ZooKeeper через `ZOOKEEPER_CONNECT_STRING` env var (`zookeeper:2181` в compose), info-логи.
 
-- `spring.application.name=currency-rate-provider`
-- `spring.cloud.zookeeper.connect-string=localhost:2181`
-- `spring.cloud.zookeeper.discovery.register=true`
-- `spring.cloud.zookeeper.discovery.instance-port=${grpc.server.port}`
-- `grpc.server.port=9090`
+Активировать профиль:
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
+# или
+java -jar app.jar --spring.profiles.active=prod
+```
 
-### rate-printer
+## Graceful shutdown
 
-- `spring.application.name=rate-printer`
-- `spring.cloud.zookeeper.connect-string=localhost:2181`
-- `rate.provider.service-name=currency-rate-provider`
-- `rate.printer.interval-ms=5000`
-- `rate.provider.rpc-timeout-ms=1500`
+При получении `SIGTERM` приложение:
+1. Останавливает приём новых HTTP/gRPC запросов.
+2. Дожидается завершения текущих запросов (до 30 секунд).
+3. Корректно завершает процесс.
 
-## Запуск ZooKeeper
+Настройки:
+- `server.shutdown=graceful`
+- `spring.lifecycle.timeout-per-shutdown-phase=30s`
+- `grpc.server.shutdown-grace-period=30` (provider)
+
+## Запуск через Docker Compose (production-like)
+
+```bash
+cd src
+docker compose up -d --build
+```
+
+Это поднимет:
+- ZooKeeper
+- `currency-rate-provider` (2 реплики по умолчанию)
+- `rate-printer`
+- Prometheus
+- Grafana
+
+Остановка:
+```bash
+docker compose down
+```
+
+## Запуск ZooKeeper (только инфраструктура)
 
 ```bash
 cd src
 docker compose -f docker-compose.zookeeper.yml up -d
 ```
 
-Проверка контейнера:
-
-```bash
-docker ps | grep sbt-zookeeper
-```
-
 ## Сборка и тесты
 
-Если локальный `mvn` отсутствует, используйте Maven через Docker.
-
-### currency-rate-provider
+### Все модули через корневой POM
 
 ```bash
-docker run --rm -v "$PWD/src/currency-rate-provider":/workspace -w /workspace \
+cd src
+mvn clean verify
+```
+
+### Через Docker Maven (если локальный Maven отсутствует)
+
+```bash
+cd src
+
+# Сначала proto модуль
+docker run --rm -v "$PWD":/workspace -w /workspace \
+  maven:3.9.9-eclipse-temurin-17 mvn clean install -pl currency-rate-proto
+
+# Затем сервисы
+docker run --rm -v "$PWD/currency-rate-provider":/workspace -w /workspace \
+  maven:3.9.9-eclipse-temurin-17 mvn clean verify
+
+docker run --rm -v "$PWD/rate-printer":/workspace -w /workspace \
   maven:3.9.9-eclipse-temurin-17 mvn clean verify
 ```
 
-### rate-printer
-
-```bash
-docker run --rm -v "$PWD/src/rate-printer":/workspace -w /workspace \
-  maven:3.9.9-eclipse-temurin-17 mvn clean verify
-```
-
-## Запуск сервисов
-
-### Вариант с локальным Maven
+## Запуск сервисов (локальная разработка)
 
 1. Запустите provider:
 
 ```bash
 cd src/currency-rate-provider
-mvn spring-boot:run
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
 2. В отдельном терминале запустите rate-printer:
 
 ```bash
 cd src/rate-printer
-mvn spring-boot:run
-```
-
-### Вариант через Maven Docker
-
-1. Provider:
-
-```bash
-docker run --rm --network host -v "$PWD/src/currency-rate-provider":/workspace -w /workspace \
-  maven:3.9.9-eclipse-temurin-17 mvn spring-boot:run
-```
-
-2. Rate-printer:
-
-```bash
-docker run --rm --network host -v "$PWD/src/rate-printer":/workspace -w /workspace \
-  maven:3.9.9-eclipse-temurin-17 mvn spring-boot:run
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
 ## Smoke-проверка
@@ -142,5 +166,6 @@ docker run --rm --network host -v "$PWD/src/rate-printer":/workspace -w /workspa
 ```bash
 # остановка сервисов Ctrl+C
 cd src
+docker compose down
 docker compose -f docker-compose.zookeeper.yml down
 ```

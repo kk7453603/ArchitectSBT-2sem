@@ -3,6 +3,10 @@ out/
 target/
 !**/src/main/**/out/
 !**/src/test/**/out/
+.idea/
+*.iml
+*.ipr
+*.iws
 
 ### Eclipse ###
 .apt_generated
@@ -28,3 +32,10 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+### Logs ###
+*.log
+
+### Local Docker overrides ###
+*.local.yml
+*.override.yml

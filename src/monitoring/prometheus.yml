@@ -2,30 +2,23 @@ global:
   scrape_interval: 15s
 
 scrape_configs:
-  - job_name: 'service1'
+  - job_name: 'currency-rate-provider'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      - targets: ['host.docker.internal:8081']
+      - targets: ['currency-rate-provider:8081']
         labels:
-          instance: 'service1'
+          instance: 'currency-rate-provider'
 
-  - job_name: 'service2'
+  - job_name: 'rate-printer'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      - targets: ['host.docker.internal:8083']
+      - targets: ['rate-printer:8082']
         labels:
-          instance: 'service2'
-
-  - job_name: 'client'
-    metrics_path: '/actuator/prometheus'
-    static_configs:
-      - targets: ['host.docker.internal:8082']
-        labels:
-          instance: 'client'
+          instance: 'rate-printer'
 
   - job_name: 'zookeeper'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['host.docker.internal:7000']
+      - targets: ['zookeeper:7000']
         labels:
           instance: 'zookeeper'

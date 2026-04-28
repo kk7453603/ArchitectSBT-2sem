@@ -1,0 +1,41 @@
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+target/
+out/
+build/
+dist/
+*.jar
+*.war
+*.ear
+*.class
+
+# Logs
+*.log
+
+# Docker
+# Keep Dockerfiles and compose files in repo
+# Only ignore local volumes/data
+*.local.yml
+*.override.yml
+
+# Misc
+*.tmp
+*.temp
+.cache/
+
+# Homework images
+dz.jpg
+dz_2.jpg
