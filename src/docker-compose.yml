@@ -1,0 +1,90 @@
+services:
+  zookeeper:
+    image: zookeeper:3.9
+    container_name: sbt-zookeeper
+    restart: unless-stopped
+    ports:
+      - "2181:2181"
+      - "7000:7000"
+    environment:
+      ZOO_CFG_EXTRA: "metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider metricsProvider.httpPort=7000"
+    networks:
+      - currency-network
+
+  currency-rate-provider:
+    build:
+      context: .
+      dockerfile: currency-rate-provider/Dockerfile
+    container_name: sbt-provider
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+      - "9090:9090"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      ZOOKEEPER_CONNECT_STRING: zookeeper:2181
+    depends_on:
+      - zookeeper
+    networks:
+      - currency-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  rate-printer:
+    build:
+      context: .
+      dockerfile: rate-printer/Dockerfile
+    container_name: sbt-printer
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      ZOOKEEPER_CONNECT_STRING: zookeeper:2181
+    depends_on:
+      - zookeeper
+      - currency-rate-provider
+    networks:
+      - currency-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sbt-prometheus
+    ports:
+      - "9092:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - currency-network
+    depends_on:
+      - currency-rate-provider
+      - rate-printer
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: sbt-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - currency-network
+    depends_on:
+      - prometheus
+
+networks:
+  currency-network:
+    driver: bridge
